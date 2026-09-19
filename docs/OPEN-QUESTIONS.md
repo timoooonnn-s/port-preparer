@@ -54,11 +54,58 @@ suggest an I-SID or an MLT id rather than validate one the engineer typed.
   for DC / large office / branch, one example config per category is what unblocks it.
 
 
-  ## User questions
-  - **01.** Option to automate "the which switch decision". Spike the inventory with exact rack naming of each device. Input some facts about the server or end-device (for server, pre categorize into linux, windows or esx (and more if needed, examples, not complete list)
-When a new port should get provided, the tool should automatically decide where the nearest free switch with available ports is
-- **02.** Phasings: Currently, there is a Config A, which gets done on the port for the linux and windows admin, that they can configure their server. When they are finished, the final config for the application gets deployed on the port. I would like to simplify this process - don't really get why this is done in "two steps".. 
+## User questions
 
+Verbatim, as added by the user on 2026-09-20. Both are worked through in
+`design/INVENTORY-AND-STATE.md`; the questions they raised in turn are in the
+**Inventory and placement** section below.
+
+- **01.** Option to automate "the which switch decision". Spike the inventory with exact rack
+  naming of each device. Input some facts about the server or end-device (for server, pre
+  categorize into linux, windows or esx (and more if needed, examples, not complete list)).
+  When a new port should get provided, the tool should automatically decide where the nearest
+  free switch with available ports is.
+- **02.** Phasings: Currently, there is a Config A, which gets done on the port for the linux
+  and windows admin, that they can configure their server. When they are finished, the final
+  config for the application gets deployed on the port. I would like to simplify this process -
+  don't really get why this is done in "two steps"..
+
+## Inventory and placement
+
+Raised by the council while working through the two questions above. The first four are
+blocking: they decide the shape of the inventory layer rather than a value inside it.
+
+- **Q10. Where does the registry live?** Recommendation: build against an `InventoryBackend`
+  interface, ship CSV first, add NetBox behind the same interface. The blocking part is whether
+  NetBox/Nautobot is acceptable as the destination, because concurrent allocation is not safe
+  in CSV-in-git and that is a real defect, not a theoretical one.
+- **Q11. Which IPAM is it?** The product determines whether it can hold I-SIDs alongside the
+  subnets it already has, and therefore whether it is the registry or merely a seed for it.
+- **Q12. Structured cabling or direct-attach?** If servers patch through panels, "nearest
+  switch" is really "which switch does this rack's panel land on", cabling has to be recorded,
+  and the location ladder is mostly decoration. If they direct-attach to top-of-rack, the
+  ladder is the whole answer. Completely different designs.
+- **Q13. Decode the hostname scheme.** `gx-11-s72-p1`, `gx-11-s74-wu`/`-wv`,
+  `gx-11-s59-p1`, `m*`. What is each field? If it reliably encodes site, rack and role, much of
+  the location model can be *derived* rather than typed — which is the difference between an
+  inventory people maintain and one that rots.
+- **Q14. Why two phases?** Build network, security control, ordering dependency, or
+  organisational? Determines whether it collapses or becomes one intent with two stages. See
+  section 9 of the design doc.
+- **Q15. Where do single-homed ports start?** Dual-homed come off the bottom of the chassis per
+  your convention. Is there a rule for the rest, or is the next free port fine?
+- **Q16. Does the MLT `4xx` rule imply port symmetry across the vIST pair?** It appears to be
+  forced: SMLT needs the same MLT id on both peers, and the id derives from the port number, so
+  a dual-homed server must land on the same port number on both switches. Confirm, because it
+  materially narrows what the allocator may pick.
+- **Q17. Device classes.** linux / windows / esx were named as examples. What is the real list,
+  and what differs per class — port count, tagging, LACP, MTU, NAC?
+- **Q18. Is an optic-less port allocatable?** 38 of 54 ports on the captured switch are empty
+  cages. Should the tool propose those (with "needs an optic fitted") or only ports ready today?
+- **Q19. I-SID name limits.** Maximum length and legal characters on 8.10 and 9.4. The name
+  generator's format depends on it and we should not guess.
+- **Q20. May the tool crawl all ~300 switches?** `discover-services` is read-only but it is real
+  load. Acceptable, and per-site opt-in at first?
 
 ## Deliberately deferred
 

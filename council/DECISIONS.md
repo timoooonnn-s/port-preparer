@@ -109,3 +109,46 @@ If the second variant turns out to mean something (a second fabric, a migration 
 will canonicalise away real information. Cheap mitigation taken: the variant is reported, not
 silently rewritten, wherever it already exists.
 **Falsified if:** two services in the same environment are found needing different prefixes.
+
+## 0011 — PROPOSED: a registry, not a statefile
+**Date:** 2026-09-20
+**Status:** proposed, awaiting the user. Nothing is built on it yet.
+**Decision:** The persistent store holds only what a device cannot report — allocations, service
+intent, ownership, physical facts, lifecycle position. Reality is re-read from the device every
+time and never cached as authority. The tool must never refuse to act because its registry
+disagrees with a device: the device wins, the registry is corrected, the discrepancy is a
+finding.
+**Pushed by:** the Architect, from the observation that Terraform state exists mostly to map
+logical names to opaque cloud ids and to avoid API calls, and neither problem exists here.
+**Dissent (Critic):** re-reading a device every time is slower and assumes the device is always
+reachable; there will be a moment when someone wants a cached answer for a report across 300
+switches. Accepted with a condition: caching is allowed for *reporting* and must carry an
+explicit "as of" timestamp, but the apply path always reads live.
+**Also recorded (Critic):** we are calling the store a "registry" specifically to keep the
+Terraform mental model out of the design. If people start calling it state, expect the
+"refresh required" failure mode to follow.
+**Falsified if:** a real need appears to diff against something other than the live device.
+
+## 0012 — PROPOSED: propose-and-confirm, not auto-pick
+**Date:** 2026-09-20
+**Status:** proposed.
+**Decision:** Switch and port selection outputs the top three candidates with reasoning and
+disqualifications; the engineer confirms. Full autonomy is deferred until the proposals have
+been right for long enough to trust.
+**Pushed by:** the Operator. A wrong automatic pick costs a walk to the wrong rack, or a patch
+into a live port.
+**Dissent (Drafter):** the user explicitly asked for the tool to "decide by itself", so this is
+a narrowing of the stated ask and must be presented as such rather than quietly implemented.
+Accepted: it is being put to the user as a decision, not assumed.
+**Falsified if:** the proposals prove so consistently right that confirmation is pure friction.
+
+## 0013 — PROPOSED: find already-cabled devices by LLDP before building any inventory
+**Date:** 2026-09-20
+**Status:** proposed.
+**Decision:** Split the ask in two. "Configure the port for this server that is already racked"
+needs no location data — LLDP names the switch and port. "Find me a port for a server that is
+not here yet" needs the full constraint solver. Build the first now, the second once inventory
+exists.
+**Pushed by:** the Drafter, to keep port creation from being blocked behind an inventory project.
+**Dissent:** none.
+**Falsified if:** most requests turn out to be for devices that are not yet cabled.
