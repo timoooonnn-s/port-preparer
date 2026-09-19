@@ -53,6 +53,13 @@ suggest an I-SID or an MLT id rather than validate one the engineer typed.
   build the inheritance mechanism without the values, and will. When you want real profiles
   for DC / large office / branch, one example config per category is what unblocks it.
 
+
+  ## User questions
+  - **01.** Option to automate "the which switch decision". Spike the inventory with exact rack naming of each device. Input some facts about the server or end-device (for server, pre categorize into linux, windows or esx (and more if needed, examples, not complete list)
+When a new port should get provided, the tool should automatically decide where the nearest free switch with available ports is
+- **02.** Phasings: Currently, there is a Config A, which gets done on the port for the linux and windows admin, that they can configure their server. When they are finished, the final config for the application gets deployed on the port. I would like to simplify this process - don't really get why this is done in "two steps".. 
+
+
 ## Deliberately deferred
 
 L3 VSN / VRF / `ipvpn`, multicast over Fabric Connect, Fabric Attach, REST transport,
