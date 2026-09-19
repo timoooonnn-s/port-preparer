@@ -65,3 +65,21 @@ def test_conventions_command_decodes_a_vlan_name():
 def test_conventions_command_refuses_the_reserved_vlan():
     result = runner.invoke(app, ["conventions", "--vlan", "31"])
     assert result.exit_code == 2
+
+
+def test_missing_ssh_extra_is_reported_before_prompting_for_credentials(monkeypatch):
+    """Typing a RADIUS password and then being told netmiko is absent is a bad first run."""
+    import port_preparer.cli as cli
+
+    monkeypatch.setattr(cli, "ssh_available", lambda: False)
+
+    def fail(*args, **kwargs):  # pragma: no cover - must never be reached
+        raise AssertionError("credentials were requested despite no usable transport")
+
+    monkeypatch.setattr(cli.getpass, "getpass", fail)
+    monkeypatch.setattr(cli.typer, "prompt", fail)
+
+    result = runner.invoke(app, ["audit", "--host", "sw-aa-s01-p1"])
+    assert result.exit_code == 2
+    assert "netmiko is required" in result.stdout
+    assert "--capture" in result.stdout

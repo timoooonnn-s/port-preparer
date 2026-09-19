@@ -28,7 +28,14 @@ from .conventions import Environment, classify_isid, decode_vlan_name, isid_for_
 from .discover import DiscoveryReport, discover
 from .model import DeviceState
 from .profiles import ProfileSet
-from .transport import MockTransport, SSHTransport, Transport, TransportError
+from .transport import (
+    SSH_MISSING_MESSAGE,
+    MockTransport,
+    SSHTransport,
+    Transport,
+    TransportError,
+    ssh_available,
+)
 
 app = typer.Typer(
     add_completion=False,
@@ -53,6 +60,8 @@ def _open_transport(host: str | None, capture: Path | None, username: str | None
         return MockTransport(capture)
     if host is None:
         raise typer.BadParameter("one of --host or --capture is required")
+    if not ssh_available():
+        raise TransportError(SSH_MISSING_MESSAGE)
 
     user = username or os.environ.get("USER") or ""
     user = typer.prompt("Username", default=user) if not username else username

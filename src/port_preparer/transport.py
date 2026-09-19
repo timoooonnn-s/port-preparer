@@ -63,6 +63,25 @@ class MockTransport(Transport):
         return path.read_text()
 
 
+def ssh_available() -> bool:
+    """True when netmiko is importable.
+
+    Checked *before* prompting for credentials: typing a RADIUS password and then being told
+    the transport is not installed is a bad first five minutes with this tool.
+    """
+    try:
+        import netmiko  # noqa: F401, PLC0415
+    except ImportError:
+        return False
+    return True
+
+
+SSH_MISSING_MESSAGE = (
+    "netmiko is required to reach a real switch: pip install 'port-preparer[ssh]'. "
+    "Without it you can still audit captured output with --capture."
+)
+
+
 class SSHTransport(Transport):
     """netmiko over SSH, device_type `extreme_vsp`.
 
@@ -84,9 +103,7 @@ class SSHTransport(Transport):
         try:
             from netmiko import ConnectHandler  # noqa: PLC0415 - optional dependency
         except ImportError as exc:  # pragma: no cover - depends on install extras
-            raise TransportError(
-                "netmiko is required to reach a real switch: pip install 'port-preparer[ssh]'"
-            ) from exc
+            raise TransportError(SSH_MISSING_MESSAGE) from exc
 
         self._read_timeout = read_timeout
         try:
