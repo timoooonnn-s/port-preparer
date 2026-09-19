@@ -49,6 +49,20 @@ show i-sid
 show running-config
 ```
 
+### 5b. Forwarding-database output — blocks locating a device by MAC
+LLDP cannot identify a server in this estate (0 of 8 advertise a name), so the locator has to
+key on MAC against the FDB. We have no capture of it, and the syntax differs between the two UNI
+models. Wanted from one switch of each model:
+
+```
+show vlan mac-address-entry
+show i-sid mac-address-entry          # switched-UNI equivalent; exact syntax unverified
+show interfaces gigabitethernet statistics
+```
+
+The last one tells us whether a port has ever passed a frame, which is good corroboration for
+"this port really is unused".
+
 ### 6. A sanitised IPAM export
 Five rows with the real headers is enough to build the inventory loader against reality rather
 than a guess.

@@ -142,13 +142,26 @@ a narrowing of the stated ask and must be presented as such rather than quietly 
 Accepted: it is being put to the user as a decision, not assumed.
 **Falsified if:** the proposals prove so consistently right that confirmation is pure friction.
 
-## 0013 — PROPOSED: find already-cabled devices by LLDP before building any inventory
-**Date:** 2026-09-20
-**Status:** proposed.
-**Decision:** Split the ask in two. "Configure the port for this server that is already racked"
-needs no location data — LLDP names the switch and port. "Find me a port for a server that is
-not here yet" needs the full constraint solver. Build the first now, the second once inventory
-exists.
-**Pushed by:** the Drafter, to keep port creation from being blocked behind an inventory project.
-**Dissent:** none.
-**Falsified if:** most requests turn out to be for devices that are not yet cabled.
+## 0013 — REVISED: locate already-cabled devices by MAC, not by LLDP name
+**Date:** 2026-09-20 (proposed), revised the same day.
+**Status:** the split stands; the mechanism changed before anything was built.
+**Original decision:** find an already-racked server's port via LLDP, which names the switch and
+port and needs no inventory.
+**Why it was wrong:** the user warned from migration experience that LLDP data is inconsistent or
+absent. Measuring their own capture: every one of the 7 switch-to-switch links advertises a
+sysname, and **none of the 8 servers does**. Two rows are additionally truncated by the CLI. So
+looking a server up by name over LLDP cannot work here at all.
+**Revised decision:** the locator keys on **MAC address**, supplied by the requester, matched
+against the forwarding database. LLDP chassis id corroborates; link state plus a fitted optic is
+an absolute negative check. The locator reports a confidence and treats *not found* and
+*ambiguous* as first-class outcomes. It is blocked on a real FDB capture and will not be trusted
+before one exists.
+**Pushed by:** the user, correcting the council.
+**Dissent (Critic):** I should have caught this from the fixture, which was already in the repo
+and already showed eight nameless servers. The lesson is not about LLDP: it is that "the data is
+present" and "the data is usable for the thing I want" are different claims, and I checked the
+first and asserted the second.
+**Standing rule added:** absence of LLDP is never evidence that nothing is plugged in — the same
+class of error as decision 0008.
+**Falsified if:** the FDB turns out to be as patchy as LLDP, in which case device location is an
+inventory problem only and there is no shortcut.

@@ -169,19 +169,25 @@ port. The Operator's position: output the top three candidates with the reasonin
 disqualifications, and let the engineer confirm. Full autonomy can come later, once the
 proposals have been right for a few months.
 
-### The shortcut worth building first
+### The shortcut worth building first — revised
 
-For a server that is **already cabled**, none of the above is necessary: `show lldp neighbor`
-names the switch and port directly. The captures show ProLiant chassis ids on exactly the ports
-those servers occupy. So:
+**Superseded in part.** The original proposal was to find an already-cabled server's port via
+LLDP. The user warned that LLDP data in their estate is inconsistent or absent, and measuring
+their own capture confirmed it decisively: all 7 switch-to-switch links advertise a sysname,
+and **0 of 8 servers do**. See `knowledge-base/03-identifying-a-device-on-a-port.md`.
 
-* *"Configure the port for this already-racked server"* → find it by LLDP or MAC. Reliable,
-  needs no location data at all.
-* *"I need a port for a server that is not here yet"* → the constraint solver above, which
-  needs the full location model.
+So *"find the port for server web01"* is not achievable by name in this estate. The split still
+holds, but the mechanism changes:
 
-The first is a small feature that removes a large amount of manual lookup, and it can ship long
-before the inventory exists. The council suggests it as the first half of this work.
+* *"Configure the port for this already-racked device"* → locate it by **MAC address** against
+  the forwarding database, with LLDP chassis id as corroboration and link state as an absolute
+  negative check. Multi-signal, reports a confidence, and treats *not found* and *ambiguous* as
+  first-class answers. Blocked on a real FDB capture before it can be trusted.
+* *"I need a port for a device that is not here yet"* → the constraint solver above, which needs
+  the full location model.
+
+`discover-services` is unaffected — it depends on none of this — so it moves to the front of the
+queue on its own.
 
 ## 7. I-SID naming: fix the registry, then generate the name
 
