@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 
 from . import ports as portlib
 from .collect import Collection
-from .model import Binding, DeviceState, Isid, Mlt, Neighbor, Port, Vlan
+from .model import Binding, DeviceState, Isid, Mlt, Neighbor, Port, SpbmIsid, Vlan
 from .parse import voss
 from .parse.runconf import RunningConfig, parse_running_config
 
@@ -174,6 +174,19 @@ def discover(collection: Collection) -> tuple[DeviceState, DiscoveryReport]:
     for row in note_skips("show virtual-ist", voss.parse_virtual_ist(text("show virtual-ist"))).rows:
         state.vist_peer_ip = row["peer_ip"]
         state.vist_vlan = row["vlan_id"]
+
+    for row in note_skips(
+        "show isis spbm i-sid all", voss.parse_isis_spbm_i_sid(text("show isis spbm i-sid all"))
+    ).rows:
+        entry = state.spbm_isids.setdefault(row["i_sid"], SpbmIsid(i_sid=row["i_sid"]))
+        if row["origin"] == "config":
+            entry.locally_configured = True
+        elif row["advertising_host"] and row["advertising_host"] not in entry.advertised_by:
+            entry.advertised_by.append(row["advertising_host"])
+        if row["b_vid"] not in entry.b_vids:
+            entry.b_vids.append(row["b_vid"])
+    if state.spbm_isids:
+        state.evidence.add("spbm-control-plane")
 
     dvr_rows = note_skips("show dvr interfaces", voss.parse_dvr_interfaces(text("show dvr interfaces"))).rows
     if dvr_rows:

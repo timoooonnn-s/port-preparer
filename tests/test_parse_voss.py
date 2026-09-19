@@ -28,6 +28,7 @@ _CASES = [
     (voss.parse_virtual_ist, PROD, "show_virtual_ist.txt", 1),
     (voss.parse_dvr_interfaces, LAB, "show_dvr_interfaces.txt", 3),
     (voss.parse_lldp_neighbor_summary, PROD, "show_lldp_neighbor_summary.txt", 15),
+    (voss.parse_isis_spbm_i_sid, LAB, "show_isis_spbm_i_sid_all.txt", 5),
 ]
 
 
@@ -112,3 +113,24 @@ def test_prod_capture_confirms_the_mlt_id_convention_conflict():
     rows = {row["mlt_id"]: row for row in voss.parse_mlt(read(PROD, "show_mlt.txt")).rows}
     assert rows[196]["ports"] == "1/10"       # the 4xx rule would give MLT 410
     assert rows[196]["name"] == "f110"        # the port is encoded in the name instead
+
+
+def test_isis_spbm_isid_distinguishes_local_config_from_remote_discovery():
+    """This is what makes orphan detection possible from a single switch: `config` means
+    configured here, `discover` means a remote BEB advertises it."""
+    rows = voss.parse_isis_spbm_i_sid(read(LAB, "show_isis_spbm_i_sid_all.txt")).rows
+    by_isid: dict[int, list[dict]] = {}
+    for row in rows:
+        by_isid.setdefault(row["i_sid"], []).append(row)
+
+    # 10100: configured locally AND advertised by a remote BEB -> has a far end.
+    origins = {r["origin"] for r in by_isid[10100]}
+    assert origins == {"config", "discover"}
+    assert {r["advertising_host"] for r in by_isid[10100]} == {"dvr-01", "beb-07"}
+
+    # 10200: configured locally, nobody advertises it -> orphan.
+    assert {r["origin"] for r in by_isid[10200]} == {"config"}
+
+    # 20300: only discovered, so it terminates elsewhere and not here.
+    assert {r["origin"] for r in by_isid[20300]} == {"discover"}
+    assert by_isid[20300][0]["b_vid"] == 4051

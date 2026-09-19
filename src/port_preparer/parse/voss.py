@@ -440,3 +440,30 @@ def parse_lldp_neighbor_summary(text: str) -> ParseResult:
             }
         )
     return result
+
+
+# --- show isis spbm i-sid all ------------------------------------------------------
+# The TYPE column is the key to orphan detection without crawling the whole fabric:
+# `config` means configured on this switch, `discover` means learned via ISIS from a remote
+# BEB. An I-SID with a local `config` row and no `discover` row has no far end.
+
+_SPBM_ISID = re.compile(
+    r"^(?P<isid>\d+)\s+(?P<source>\S+)\s+(?P<bvid>\d+)\s+(?P<sysid>\S+)\s+"
+    r"(?P<type>config|discover)\s*(?P<host>\S*)\s*$",
+    re.IGNORECASE,
+)
+
+
+def parse_isis_spbm_i_sid(text: str) -> ParseResult:
+    return _scan(
+        _pick(text, "ISID", "SYSID"),
+        _SPBM_ISID,
+        lambda m: {
+            "i_sid": int(m["isid"]),
+            "source_nickname": m["source"],
+            "b_vid": int(m["bvid"]),
+            "system_id": m["sysid"],
+            "origin": m["type"].lower(),
+            "advertising_host": m["host"] or None,
+        },
+    )

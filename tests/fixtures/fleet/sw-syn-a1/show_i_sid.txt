@@ -1,0 +1,14 @@
+==========================================================================================
+                                        Isid Info
+==========================================================================================
+ISID                PORT               MLT
+ID       TYPE       INTERFACES         INTERFACES         ORIGIN     ISID NAME
+------------------------------------------------------------------------------------------
+2500695  ELAN       c695:1/10          -                  CONFIG     payroll-prod
+2500696  ELAN       c696:1/11          -                  CONFIG     billing
+2500699  ELAN       c699:1/12          -                  CONFIG     lonely-service
+2519999  ELAN       c700:1/13          -                  CONFIG     mislabelled
+
+c: customer vid   u: untagged-traffic
+
+4 out of 4 Total Num of i-sids displayed

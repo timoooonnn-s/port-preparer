@@ -31,6 +31,11 @@ AUDIT_COMMANDS: tuple[Command, ...] = (
     Command("show vlan i-sid"),
     Command("show vlan members"),
     Command("show i-sid", note="the TYPE column is how the UNI model is detected"),
+    Command(
+        "show isis spbm i-sid all",
+        required=False,
+        note="config vs discover reveals whether an I-SID has a remote endpoint at all",
+    ),
     Command("show interfaces gigabitethernet i-sid"),
     Command(
         "show interfaces gigabitethernet interface",

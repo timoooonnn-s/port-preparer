@@ -85,21 +85,47 @@ statefile-shaped item in the whole design, and it is small.
 
 ## 4. Where it should live
 
-| Option | Verdict |
-|---|---|
-| **NetBox / Nautobot** | **Recommended destination.** Purpose-built: sites, locations, racks, rack units, devices, roles, interfaces, cables, front/rear panel ports, VLANs, prefixes, custom fields, tags, journal entries. Good REST + GraphQL and a solid Python client. Critically, its **L2VPN** model with an `identifier` integer is a near-exact fit for an I-SID, and the database gives us *atomic allocation* with uniqueness constraints. Nautobot additionally has a jobs framework if we ever want scheduled reconciliation. |
-| **CSV / YAML in git** | **Recommended starting point, and permanently supported.** Reviewable, no server, works on day one, and the user already planned an IPAM export enriched by hand. But: no referential integrity, and **no safe concurrent allocation** — two engineers allocating an I-SID produce a merge conflict at best and a silent duplicate at worst. Fine for policy; weak for allocation. |
-| **Our own database** | **No.** We would be writing a DCIM. It is a solved problem and not this project's value. |
-| **The existing IPAM** | **Probably part of the answer.** It already holds subnets, and the VLAN-name convention proves subnet and VLAN are already coupled. Which product it is determines whether it can also hold I-SIDs. Open question. |
+**Constraint from the user (2026-09-20): NetBox/Nautobot is not available and should not be
+designed for.** That is not a deferral, it is a boundary. So the registry has to be robust
+standalone and permanently — and the concurrent-allocation problem the council flagged is ours to
+solve, not something a database will fix later.
 
-**Recommendation: build against an `InventoryBackend` interface, ship the CSV backend first,
-add a NetBox backend behind the same interface.** That is the decision that matters
-architecturally; which backend is live becomes a config setting rather than a rewrite. It also
-means nobody is blocked on standing up NetBox, while the design does not quietly assume CSV
-forever.
+The enabling fact: **there is one central automation host.** Every engineer runs the tool there.
+That makes file-level atomicity sufficient, because there is exactly one filesystem involved.
 
-Policy stays in git either way: the profile YAML from decision 0005 is code-adjacent, belongs
-in review, and should never live in a database.
+### The design: one file per allocated object, in git
+
+```
+registry/
+  services/2500695.yaml            # one file per I-SID
+  services/2700695.yaml
+  ports/sw-aa-s01-p1/1-43.yaml     # provenance: what we configured, when, by whom, why
+  devices.csv                      # the IPAM export, enriched by hand
+```
+
+Why per-object files rather than one big file:
+
+1. **Allocation is atomic for free.** Claiming I-SID 2500695 is
+   `open(..., O_CREAT|O_EXCL)` on `services/2500695.yaml`. Two engineers racing: one wins, the
+   other gets `EEXIST` and a clear error. No lock, no database, no round trip.
+2. **No merge conflicts.** Separate files mean two people adding two services never collide in
+   git, which one shared YAML file guarantees they would.
+3. **Reviewable.** A new service is a one-file diff a colleague can read.
+4. **`flock` covers the rest.** Multi-step operations (allocate an I-SID *and* an MLT id *and*
+   claim two ports) take a single lock file for the duration. One host, so this is real mutual
+   exclusion, not advisory hand-waving.
+5. **Scale is a non-issue.** ~300 switches and a few thousand small files loads into memory in
+   well under a second. No index needed.
+
+Devices arrive as **CSV**, because that is how the user's IPAM export arrives and enriching it by
+hand is the stated plan. Only `hostname` is required; everything else is optional and the loader
+reports what is missing rather than refusing to start.
+
+There is a thin seam (`Registry`, `Inventory`) so a different store could be substituted, but it
+is a seam, not a plugin system — the council is not building for a backend that is not coming.
+
+Policy stays separate: the profile YAML from decision 0005 is code-adjacent and belongs in review,
+not in the registry.
 
 ## 5. The location model, for "nearest switch"
 
@@ -278,9 +304,11 @@ at a device, and those findings belong in the same graded audit output that alre
 
 1. **A second source of chaos.** An unmaintained NetBox is worse than no NetBox, because people
    trust it. Mitigated only by section 10.
-2. **Allocation races.** Concurrent allocation is unsafe in CSV-in-git. If two engineers ever
-   provision simultaneously, this is a real defect and not a theoretical one. It is the
-   strongest technical argument for a database.
+2. **Allocation races — addressed, not deferred.** One file per allocated object with
+   `O_CREAT|O_EXCL` makes claiming a number atomic, and `flock` covers multi-step operations.
+   Sound because there is a single automation host. The residual risk is someone editing the
+   registry by hand outside the tool, or the registry directory living on NFS where `O_EXCL`
+   semantics are weaker — both worth stating in the runbook.
 3. **Automation confidence outrunning data quality.** Auto-picking a switch from an inventory
    that is 80% right produces confident wrong answers. Propose-and-confirm is the mitigation,
    and it should stay until the data has earned trust.

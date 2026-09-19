@@ -110,6 +110,25 @@ will canonicalise away real information. Cheap mitigation taken: the variant is 
 silently rewritten, wherever it already exists.
 **Falsified if:** two services in the same environment are found needing different prefixes.
 
+## 0011a — The registry is per-object files in git, on the one automation host
+**Date:** 2026-09-20
+**Decision:** No NetBox — the user states it is not obtainable, so it is a boundary rather than a
+later phase. The registry is one small YAML file per allocated object under `registry/`, held in
+git. Allocation is `O_CREAT|O_EXCL` on the object's own path, which is atomic; multi-step
+operations take a `flock`. Device inventory arrives as CSV, because that is how the IPAM export
+arrives.
+**Pushed by:** the user, ruling NetBox out. The Architect notes this turns the allocation race
+from "a database will fix it" into a solved problem, which is a better outcome: per-object files
+also remove git merge conflicts, which one shared registry file would have guaranteed.
+**Dissent (Critic):** `O_EXCL` is only as atomic as the filesystem underneath it. If
+`registry/` ever lands on NFS this guarantee quietly weakens, and nothing in the tool would
+notice. Accepted with a condition: the runbook states the registry must live on local disk on the
+automation host, and the tool warns if it can detect otherwise.
+**Also recorded:** a thin `Registry`/`Inventory` seam is kept so the store could be replaced, but
+it is a seam, not a plugin system. We are not building for a backend that is not coming.
+**Falsified if:** hand-editing outside the tool turns out to be common enough that atomicity at
+the file level buys nothing.
+
 ## 0011 — PROPOSED: a registry, not a statefile
 **Date:** 2026-09-20
 **Status:** proposed, awaiting the user. Nothing is built on it yet.

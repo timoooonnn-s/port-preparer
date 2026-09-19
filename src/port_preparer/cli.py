@@ -26,8 +26,12 @@ from .audit import AuditResult, Severity, audit
 from .collect import AUDIT_COMMANDS, Collection, collect
 from .conventions import Environment, classify_isid, decode_vlan_name, isid_for_new_service, mlt_id_for_new_lag
 from .discover import DiscoveryReport, discover
+from .fleet import DEFAULT_WORKERS, collect_fleet
+from .inventory import Inventory, InventoryError
 from .model import DeviceState
 from .profiles import ProfileSet
+from .registry import Registry
+from .services import ServiceSurvey, harvest, survey
 from .transport import (
     SSH_MISSING_MESSAGE,
     MockTransport,
@@ -43,6 +47,9 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+#: Progress and diagnostics go to stderr so that --json output stays machine-parseable
+#: when piped. Anything that is not the requested result belongs here.
+err_console = Console(stderr=True)
 
 _SEVERITY_STYLE = {
     Severity.ERROR: "bold red",
@@ -177,7 +184,7 @@ def audit_device(
     try:
         transport = _open_transport(host, capture, username)
     except TransportError as exc:
-        console.print(f"[bold red]{exc}[/bold red]")
+        err_console.print(f"[bold red]{exc}[/bold red]")
         raise typer.Exit(code=2) from exc
 
     with transport:
@@ -185,7 +192,7 @@ def audit_device(
 
     if save_raw is not None:
         target = collection.save(save_raw / (state.hostname or collection.host))
-        console.print(f"[dim]raw output saved to {target}[/dim]")
+        err_console.print(f"[dim]raw output saved to {target}[/dim]")
 
     profiles = ProfileSet.load(profile_path) if profile_path else ProfileSet.load()
     result = audit(
@@ -215,7 +222,7 @@ def capture(
     try:
         transport = _open_transport(host, None, username)
     except TransportError as exc:
-        console.print(f"[bold red]{exc}[/bold red]")
+        err_console.print(f"[bold red]{exc}[/bold red]")
         raise typer.Exit(code=2) from exc
 
     with transport:
@@ -246,7 +253,7 @@ def conventions(
             env = Environment(environment)
             console.print(f"VLAN {vlan} in {env.value} -> i-sid {isid_for_new_service(vlan, env)}")
         except ValueError as exc:
-            console.print(f"[bold red]{exc}[/bold red]")
+            err_console.print(f"[bold red]{exc}[/bold red]")
             raise typer.Exit(code=2) from exc
     if i_sid is not None:
         decoded = classify_isid(i_sid)
@@ -268,10 +275,199 @@ def conventions(
         try:
             console.print(f"a new LAG on {port} -> MLT {mlt_id_for_new_lag(port)}")
         except ValueError as exc:
-            console.print(f"[bold red]{exc}[/bold red]")
+            err_console.print(f"[bold red]{exc}[/bold red]")
             raise typer.Exit(code=2) from exc
     if all(x is None for x in (vlan, i_sid, vlan_name, port)):
         console.print("pass one of --vlan, --isid, --vlan-name or --port")
+
+
+def _survey_targets(
+    capture_root: Path | None,
+    inventory_path: Path | None,
+    site: str | None,
+    site_category: str | None,
+    role: str | None,
+) -> tuple[list[str], dict[str, Path] | None]:
+    """Resolve what to crawl. Returns (hostnames, capture_dirs or None for live)."""
+    if capture_root is not None and inventory_path is not None:
+        raise typer.BadParameter("give either --capture-root or --inventory, not both")
+
+    if capture_root is not None:
+        if not capture_root.is_dir():
+            raise typer.BadParameter(f"no such directory: {capture_root}")
+        directories = {
+            child.name: child
+            for child in sorted(capture_root.iterdir())
+            if child.is_dir() and any(child.glob("*.txt"))
+        }
+        if not directories:
+            raise typer.BadParameter(
+                f"{capture_root} contains no capture subdirectories. Expected one directory per "
+                "device, each holding <command_slug>.txt files."
+            )
+        return list(directories), directories
+
+    if inventory_path is None:
+        raise typer.BadParameter("one of --capture-root or --inventory is required")
+
+    inventory = Inventory.load_csv(inventory_path)
+    devices = inventory.select(site=site, site_category=site_category, role=role)
+    if not devices:
+        raise typer.BadParameter("the inventory filters matched no devices")
+    return [device.target for device in devices], None
+
+
+def _render_survey(result: ServiceSurvey, show_info: bool) -> None:
+    console.print()
+    console.print(
+        f"[bold]Service survey[/bold]  {result.coverage}  [dim]as of {result.as_of}[/dim]"
+    )
+    if result.unreachable:
+        console.print(f"[yellow]not reached: {', '.join(result.unreachable)}[/yellow]")
+
+    table = Table(title="Services", title_justify="left", header_style="bold")
+    for column in ("I-SID", "Env", "VLAN", "Model", "Name", "Switches", "Term.", "Remote BEBs"):
+        table.add_column(column, overflow="fold")
+    for i_sid, service in sorted(result.services.items()):
+        decoded = service.classification
+        table.add_row(
+            str(i_sid),
+            decoded.environment.value if decoded.environment else "?",
+            ",".join(str(v) for v in sorted(service.vlan_ids)) or "-",
+            ",".join(sorted(service.kinds)),
+            ", ".join(sorted(service.names)) or "[dim]unnamed[/dim]",
+            str(len(service.presence)),
+            str(service.terminations) if service.terminations_known else "?",
+            ", ".join(sorted(result.services[i_sid].remote_endpoints)) or "-",
+        )
+    console.print(table)
+
+    findings = [f for f in result.sorted_findings() if show_info or f.severity is not Severity.INFO]
+    if findings:
+        problems = Table(title="Findings", title_justify="left", header_style="bold")
+        for column in ("Severity", "Scope", "Code", "Detail"):
+            problems.add_column(column, overflow="fold")
+        for finding in findings:
+            style = _SEVERITY_STYLE[finding.severity]
+            problems.add_row(
+                f"[{style}]{finding.severity.value}[/{style}]",
+                finding.scope,
+                finding.code,
+                finding.message,
+            )
+        console.print(problems)
+
+    counts = result.counts()
+    console.print("\n" + ("  ".join(f"{k}: {v}" for k, v in sorted(counts.items())) or "nothing to report"))
+
+
+@app.command("discover-services")
+def discover_services(
+    capture_root: Path | None = typer.Option(
+        None, "--capture-root", help="Directory of per-device capture subdirectories."
+    ),
+    inventory_path: Path | None = typer.Option(
+        None, "--inventory", help="Device inventory CSV, for crawling live switches."
+    ),
+    site: str | None = typer.Option(None, "--site"),
+    site_category: str | None = typer.Option(None, "--site-category", help="dc | office | branch."),
+    role: str | None = typer.Option(None, "--role"),
+    username: str | None = typer.Option(None, "--username", "-u"),
+    registry_path: Path | None = typer.Option(
+        None, "--registry", help="Registry directory, to compare against and optionally harvest into."
+    ),
+    do_harvest: bool = typer.Option(
+        False, "--harvest", help="Import observed services into the registry as 'harvested' entries."
+    ),
+    workers: int = typer.Option(DEFAULT_WORKERS, "--workers", "-w", help="Concurrent SSH sessions."),
+    save_raw: Path | None = typer.Option(None, "--save-raw", help="Save every device's raw output here."),
+    as_json: bool = typer.Option(False, "--json"),
+    show_info: bool = typer.Option(False, "--info", help="Include informational findings."),
+) -> None:
+    """Harvest every I-SID on the fleet and report what is inconsistent about them.
+
+    Read-only against the network. This is how a registry gets a valid base: the services are
+    harvested from what is actually configured, and the valuable output is the findings.
+    """
+    try:
+        hostnames, capture_dirs = _survey_targets(
+            capture_root, inventory_path, site, site_category, role
+        )
+    except typer.BadParameter:
+        raise
+    except (InventoryError, OSError) as exc:
+        err_console.print(f"[bold red]{exc}[/bold red]")
+        raise typer.Exit(code=2) from exc
+
+    if capture_dirs is not None:
+        def factory(hostname: str) -> Transport:
+            return MockTransport(capture_dirs[hostname], host=hostname)
+    else:
+        if not ssh_available():
+            err_console.print(f"[bold red]{SSH_MISSING_MESSAGE}[/bold red]")
+            raise typer.Exit(code=2)
+        user = username or typer.prompt("Username", default=os.environ.get("USER") or "")
+        password = getpass.getpass(f"Password for {user}: ")
+
+        def factory(hostname: str) -> Transport:
+            return SSHTransport(hostname, user, password)
+
+    err_console.print(f"[dim]crawling {len(hostnames)} device(s) with {workers} worker(s)...[/dim]")
+    fleet = collect_fleet(hostnames, factory, workers=workers)
+
+    if save_raw is not None:
+        for device in fleet.reached:
+            if device.collection is not None:
+                device.collection.save(save_raw / device.hostname)
+        err_console.print(f"[dim]raw output saved under {save_raw}[/dim]")
+
+    registry = Registry(registry_path) if registry_path is not None else None
+    result = survey(fleet, registry=registry)
+
+    created: list = []
+    if do_harvest:
+        if registry is None:
+            err_console.print("[bold red]--harvest requires --registry[/bold red]")
+            raise typer.Exit(code=2)
+        with registry.lock():
+            created, skipped = harvest(result, registry)
+        err_console.print(
+            f"harvested {len(created)} new service(s) into {registry.root}; "
+            f"{len(skipped)} already present and left untouched"
+        )
+
+    if as_json:
+        console.print_json(json.dumps({
+            "as_of": result.as_of,
+            "coverage": result.coverage,
+            "unreachable": result.unreachable,
+            "services": {
+                str(i_sid): {
+                    "environment": (
+                        service.classification.environment.value
+                        if service.classification.environment else None
+                    ),
+                    "vlan_ids": sorted(service.vlan_ids),
+                    "kinds": sorted(service.kinds),
+                    "names": sorted(service.names),
+                    "switches": service.hostnames,
+                    "terminations": service.terminations if service.terminations_known else None,
+                    "remote_endpoints": sorted(service.remote_endpoints),
+                }
+                for i_sid, service in sorted(result.services.items())
+            },
+            "findings": [
+                {"severity": f.severity.value, "code": f.code, "scope": f.scope, "message": f.message}
+                for f in result.sorted_findings()
+            ],
+            "counts": result.counts(),
+            "harvested": [record.i_sid for record in created],
+        }))
+    else:
+        _render_survey(result, show_info)
+        if registry is not None:
+            for warning in registry.warnings():
+                err_console.print(f"[yellow]registry: {warning}[/yellow]")
 
 
 def main() -> None:  # pragma: no cover - entry point

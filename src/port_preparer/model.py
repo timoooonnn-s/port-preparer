@@ -142,6 +142,25 @@ class Port:
 
 
 @dataclass
+class SpbmIsid:
+    """An I-SID as the ISIS control plane sees it, from `show isis spbm i-sid all`.
+
+    `locally_configured` means this switch configures it. `advertised_by` lists the remote BEBs
+    that announce it. An I-SID configured here with nobody advertising it has no far end -- which
+    is how an orphan is detected without crawling the fabric.
+    """
+
+    i_sid: int
+    locally_configured: bool = False
+    advertised_by: list[str] = field(default_factory=list)
+    b_vids: list[int] = field(default_factory=list)
+
+    @property
+    def has_remote_endpoint(self) -> bool:
+        return bool(self.advertised_by)
+
+
+@dataclass
 class Neighbor:
     port_id: str
     sysname: str | None
@@ -164,6 +183,7 @@ class DeviceState:
     isids: dict[int, Isid] = field(default_factory=dict)
     mlts: dict[int, Mlt] = field(default_factory=dict)
     neighbors: dict[str, Neighbor] = field(default_factory=dict)
+    spbm_isids: dict[int, SpbmIsid] = field(default_factory=dict)
     vist_peer_ip: str | None = None
     vist_vlan: int | None = None
     spbm_instance: int | None = None

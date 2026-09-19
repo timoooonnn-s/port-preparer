@@ -1,0 +1,13 @@
+============================================================================================================
+                                            Vlan Basic
+============================================================================================================
+VLAN                                MSTP
+ID    NAME             TYPE         INST_ID PROTOCOLID   SUBNETADDR      SUBNETMASK      VRFID ORIGIN
+------------------------------------------------------------------------------------------------------------
+1     Default          byPort       0       none         N/A             N/A             0     CONFIG
+800   E010080000000_24 byPort       0       none         N/A             N/A             0     CONFIG
+801   E010080001000_24 byPort       0       none         N/A             N/A             0     CONFIG
+4051  BVLAN-1          spbm-bvlan   62      none         N/A             N/A             0     CONFIG
+4052  BVLAN-2          spbm-bvlan   62      none         N/A             N/A             0     CONFIG
+
+All 5 out of 5 Total Num of Vlans displayed
