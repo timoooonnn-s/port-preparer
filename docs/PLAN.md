@@ -30,6 +30,9 @@ as the record of what was asked for.
 | Estate | ~300 switches, 50+ sites: 2 DC, 3 large offices, 40+ branches, each a config variant |
 | Inventory | IPAM export enriched by hand, landing as CSV |
 | First milestone | Read-only audit |
+| I-SID prefix | `250`/`251` prod, `270`/`271` non-prod, `299` special; variants equivalent |
+| Legacy | The estate predates its rules: non-conforming is `legacy`, never `error` |
+| Lab | The user installs and runs it; `capture` feeds output back as fixtures |
 
 ## Architecture
 
@@ -72,13 +75,14 @@ mention. Refusal is loud and explains itself.
 
 ## Phases
 
-- **Phase 0 — skeleton.** Domain model, mock transport, parsers, fixture-driven tests. No
-  network access needed. *Not blocked by any open question.*
-- **Phase 1 — `audit` (read-only).** Collect, parse, report per-port state, detected UNI
-  model, and compliance against profile. Zero blast radius; validates the model against 300
-  real switches before we ever write. *Not blocked.*
-- **Phase 2 — `plan`.** Render intent, produce the diff, write nothing. *Needs Q1–Q3 only for
-  proposing new I-SIDs/MLT ids; can validate engineer-supplied values without them.*
+- **Phase 0 — skeleton. DONE.** Domain model, port-id handling, conventions, mock transport,
+  13 command parsers, running-config parser, 112 tests, no network needed.
+- **Phase 1 — `audit` (read-only). DONE.** Collects, parses, detects the UNI model per port,
+  grades findings, and emits tables or JSON. `capture` writes fixtures for the test suite.
+  Still wanted: real profile values per site category (capture request 4).
+- **Phase 2 — `plan`.** Render intent, produce the diff, write nothing. *Needs Q1 only for
+  proposing MLT ids; I-SIDs can now be proposed, and engineer-supplied values validate
+  without it.* **Next.**
 - **Phase 3 — `apply`.** Backup, ordered execution, post-verify, save, rollback script, git
   record.
 - **Phase 4 — batch and SMLT pairs.** Multi-port, and dual-homed servers as one transaction
@@ -87,4 +91,5 @@ mention. Refusal is loud and explains itself.
 
 ## Next action
 
-Build Phase 0. It depends on none of the open questions.
+Build Phase 2: the renderer and the diff. Everything it needs is settled except the
+MLT-id rule (Q1), which only affects *proposing* an id for a new LAG.

@@ -1,0 +1,52 @@
+# Default profiles.
+#
+# PROVISIONAL. The user has not yet supplied the gold-standard config per scenario or per site
+# category, so the values here are taken from the one known-good flex-uni access port in the
+# captured running-config. They are a starting point to be replaced, not policy.
+#
+# Per decision 0005 a profile may set values and toggles only. No conditionals, no
+# expressions. Anything needing logic becomes a named capability in code.
+#
+# Inheritance, most general to most specific:
+#   global -> site_categories.<category> -> sites.<site> -> roles.<role> -> scenarios.<scenario>
+
+global:
+  mtu: 1950
+  # Checked on any port that carries a tenant service. Keys are `Port` attributes.
+  access_port:
+    default_vlan_id: 0
+    slpp_guard: true
+    slpp_guard_timeout: 0
+    mstp_edge_port: true
+  # Never configured by this tool, on any switch.
+  reserved_vlan_ids: [1, 31]
+
+site_categories:
+  # Each category "uses a slightly different config" per the user. The deltas are unknown;
+  # the mechanism is here and the values are pending one example config per category.
+  dc:
+    description: Two datacenters. DVR leaf mode is common here but not universal, so it is
+      detected per device rather than assumed from the category.
+  office:
+    description: Three large offices.
+  branch:
+    description: Forty-plus smaller branch sites.
+
+roles:
+  management-switch:
+    description: >
+      Hostname matches m* -- these provide management access to other networking devices.
+      Management scenarios are only permitted on this role.
+    hostname_pattern: '^m'
+
+scenarios:
+  dc-server-access:
+    description: One or more I-SIDs, tagged and/or untagged. Dual-homed variants use an SMLT
+      MLT on both vIST peers.
+    allowed_site_categories: [dc]
+  non-dc-access:
+    description: VLANs only, no I-SIDs. Tagged or untagged.
+    allowed_site_categories: [office, branch]
+  management:
+    description: Management VLAN and/or I-SID.
+    allowed_roles: [management-switch]

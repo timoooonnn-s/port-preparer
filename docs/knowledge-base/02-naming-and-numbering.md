@@ -22,15 +22,25 @@ The fixtures confirm the shape exactly — `<prefix><vlan, zero-padded to 4>`:
 | 2246 | 2512246 | `X010054064064_27` | 251 |
 | 2901 | 2512901 | `X010030008000_26` | 251 |
 
-**Unsolved: what selects the prefix.** 250 and 251 coexist on the same switch, and the
-prefix does not correlate with the VLAN-name letter (695/E→250 but 696/E→251;
-174/X→251 and 2246/X→251, yet 2262/E→250). So the prefix carries information the tool
-cannot derive from the VLAN id or the subnet. Escalated as blocking question Q2 — without
-it the engine can *validate* an I-SID the engineer supplies but cannot *propose* one.
+**Solved (2026-09-19, by the user).** The prefix encodes the **environment**:
 
-**Exception found:** VLAN 31 → I-SID **1531100**, which does not fit the rule at all. VLAN 31
-is the vIST VLAN. Infrastructure I-SIDs appear to use a different scheme, which is another
-reason the tool must treat vIST/B-VLAN/NNI objects as read-only.
+| Prefix | Meaning |
+|---|---|
+| 250, 251 | production |
+| 270, 271 | non-production |
+| 299 | a special area, neither prod nor non-prod |
+
+Within an environment the two variants are, verbatim, "the engineer's mood — nothing more,
+nothing less". So 250 and 251 are equivalent. The tool generates the canonical lower one and
+grades the other `legacy` rather than rewriting it (see decision 0010 for the Critic's
+reservation about that).
+
+This is what unblocked *proposing* an I-SID rather than only validating one.
+
+**Exception confirmed:** VLAN 31 → I-SID **1531100**, which does not fit the rule at all. The
+user confirms VLAN 31 is a reserved inter-switch trunk VLAN estate-wide. Infrastructure I-SIDs
+use their own scheme; the tool recognises the `153` prefix as infrastructure, never generates
+one, and refuses to touch vIST/B-VLAN/NNI objects.
 
 ## VLAN naming `[VERIFIED-FIXTURE — fully deterministic]`
 
@@ -48,8 +58,10 @@ E010030004064_27  ->  10.30.4.64/27
 This is a clean, reversible encoding — the engine can generate the name from a prefix and
 verify existing names against their subnet, which is a free correctness check worth having.
 
-**Unsolved: the leading letter.** `E`, `X` and `R` are all in use. Escalated as question Q3.
-Two exceptions to the whole scheme: VLAN 99 is `quarantine` and VLAN 1 is `Default`.
+**Still unsolved: the leading letter.** `E`, `X` and `R` are all in use, and the user does not
+know what they distinguish either. Consequence for the tool: it decodes and verifies names, and
+**never invents a letter** — generating a name requires the caller to supply one. Two exceptions
+to the whole scheme: VLAN 99 is `quarantine` and VLAN 1 is `Default`.
 
 ## MLT — the user's rule and the device disagree `[CONTRADICTION]`
 
@@ -72,9 +84,14 @@ The port number is encoded in the **name**, not the id: `f110` = port 1/10, `f14
 `s129` = 1/29. The ids themselves run 196–200 sequentially. A `4xx` scheme would have
 produced MLT 410 for port 1/10, and does not appear anywhere in this capture.
 
-Reading: either `4xx` is a newer convention not yet present on this switch, or it belongs to
-a different site or platform. Escalated as blocking question Q1 — the engine has to
-*allocate* MLT ids, so it needs the real rule and a collision check.
+**Resolved as a sequencing question, not a contradiction.** The user confirms the fixtures are
+older than the rules they gave us: `4xx` is what **new** ports must use, and 196–200 is history.
+The tool therefore generates `4xx` and grades anything outside that block `legacy`. Pinned as a
+test (`test_prod_capture_confirms_the_mlt_id_convention_conflict`) so it cannot be forgotten.
+
+Still open as Q1: whether the id is `4xx` for a *two-part* port id only — the convention has no
+defined answer for channelized sub-ports like `2/1/1`, where the tool currently refuses and
+demands an explicit id.
 
 Name prefixes observed: `f` on server LAGs, `s` on switch/stack links, `svi` on the vIST
 MLT. Guessing at the semantics would be a mistake; asked as part of Q1.
